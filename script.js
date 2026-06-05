@@ -41,7 +41,144 @@ let matchHistory = []; // Stack of stringified matchState copies for Undo
 window.onload = function() {
     loadSavedMatch();
     initPastMatches();
+    
+    // Attach team name input listeners to update dropdowns dynamically
+    const t1Input = document.getElementById("team1");
+    const t2Input = document.getElementById("team2");
+    if (t1Input && t2Input) {
+        t1Input.addEventListener("input", updateSetupTeamDropdowns);
+        t2Input.addEventListener("input", updateSetupTeamDropdowns);
+        updateSetupTeamDropdowns();
+    }
 };
+
+function updateSetupTeamDropdowns() {
+    const t1Name = document.getElementById("team1").value.trim() || "Team 1";
+    const t2Name = document.getElementById("team2").value.trim() || "Team 2";
+    
+    const updateSelectOptions = (selectId, option1Text, option2Text) => {
+        const selectEl = document.getElementById(selectId);
+        if (selectEl && selectEl.options.length >= 2) {
+            selectEl.options[0].text = option1Text;
+            selectEl.options[1].text = option2Text;
+        }
+    };
+    
+    updateSelectOptions("tossWinner", t1Name, t2Name);
+    updateSelectOptions("directBattingTeam", t1Name, t2Name);
+    updateSelectOptions("tossCallerSelect", t1Name, t2Name);
+}
+
+function handleTossMethodChange() {
+    const method = document.getElementById("tossMethod").value;
+    const manualRow = document.getElementById("tossManualInputs");
+    const skipRow = document.getElementById("tossSkipInputs");
+    const interactiveRow = document.getElementById("tossInteractiveBlock");
+    
+    if (method === "manual") {
+        if (manualRow) manualRow.style.display = "grid";
+        if (skipRow) skipRow.style.display = "none";
+        if (interactiveRow) interactiveRow.style.display = "none";
+    } else if (method === "skip") {
+        if (manualRow) manualRow.style.display = "none";
+        if (skipRow) skipRow.style.display = "grid";
+        if (interactiveRow) interactiveRow.style.display = "none";
+    } else if (method === "interactive") {
+        if (manualRow) manualRow.style.display = "none";
+        if (skipRow) skipRow.style.display = "none";
+        if (interactiveRow) interactiveRow.style.display = "grid";
+    }
+}
+
+let interactiveTossWinner = null;
+let interactiveTossDecision = null;
+
+function openCoinTossModal() {
+    updateSetupTeamDropdowns();
+    
+    document.getElementById("tossSetupView").style.display = "block";
+    document.getElementById("tossAnimationView").style.display = "none";
+    document.getElementById("tossResultView").style.display = "none";
+    document.getElementById("tossModalCloseActions").style.display = "flex";
+    
+    const coin = document.getElementById("coin");
+    if (coin) {
+        coin.className = "coin";
+    }
+    
+    document.getElementById("coinTossModal").classList.add("active");
+}
+
+function closeCoinTossModal() {
+    document.getElementById("coinTossModal").classList.remove("active");
+}
+
+function flipCoin() {
+    const callerVal = document.getElementById("tossCallerSelect").value;
+    const callVal = document.getElementById("tossCallSelect").value;
+    
+    const t1Name = document.getElementById("team1").value.trim() || "Team 1";
+    const t2Name = document.getElementById("team2").value.trim() || "Team 2";
+    
+    const callerName = callerVal === "1" ? t1Name : t2Name;
+    
+    document.getElementById("tossSetupView").style.display = "none";
+    document.getElementById("tossModalCloseActions").style.display = "none";
+    document.getElementById("tossAnimationView").style.display = "block";
+    
+    document.getElementById("coinFlipStatus").innerText = `${callerName} called ${callVal.toUpperCase()}... Flipping! 🪙`;
+    
+    const coin = document.getElementById("coin");
+    if (coin) {
+        coin.className = "coin";
+        void coin.offsetWidth; // Force layout recalculation
+    }
+    
+    const isHeads = Math.random() < 0.5;
+    const outcome = isHeads ? "heads" : "tails";
+    
+    if (coin) {
+        coin.classList.add(isHeads ? "flip-heads" : "flip-tails");
+    }
+    
+    let winnerIndex = "1";
+    if (outcome === callVal) {
+        winnerIndex = callerVal;
+    } else {
+        winnerIndex = callerVal === "1" ? "2" : "1";
+    }
+    
+    const winnerName = winnerIndex === "1" ? t1Name : t2Name;
+    interactiveTossWinner = winnerIndex;
+    
+    setTimeout(() => {
+        document.getElementById("tossAnimationView").style.display = "none";
+        document.getElementById("tossResultView").style.display = "block";
+        
+        document.getElementById("tossResultMessage").innerHTML = `
+            🪙 Landed on <strong>${outcome.toUpperCase()}</strong>!<br>
+            <span style="color: var(--color-success); font-weight: 750;">${winnerName} won the toss!</span>
+        `;
+    }, 2200);
+}
+
+function chooseTossDecision(decision) {
+    interactiveTossDecision = decision;
+    
+    const t1Name = document.getElementById("team1").value.trim() || "Team 1";
+    const t2Name = document.getElementById("team2").value.trim() || "Team 2";
+    const winnerName = interactiveTossWinner === "1" ? t1Name : t2Name;
+    
+    const decisionText = decision === "bat" ? "bat" : "bowl";
+    
+    document.getElementById("interactiveTossStatus").innerHTML = `
+        🎉 Toss Completed!<br>
+        <strong>${winnerName}</strong> won and elected to <strong>${decisionText}</strong> first.
+    `;
+    document.getElementById("interactiveTossStatus").style.color = "var(--color-success)";
+    
+    closeCoinTossModal();
+}
 
 // --- PERSISTENCE LAYER ---
 
@@ -117,23 +254,62 @@ function startMatch() {
     const squad2 = parseSquad("team2Squad", `${t2Name} Player`);
     
     const oversLimit = parseInt(document.getElementById("totalOvers").value) || 20;
-    const tossWinner = document.getElementById("tossWinner").value;
-    const tossDecision = document.getElementById("tossDecision").value;
+    const tossMethod = document.getElementById("tossMethod").value;
+    const widePenalty = parseInt(document.getElementById("widePenalty").value) ?? 1;
+    const nbPenalty = parseInt(document.getElementById("nbPenalty").value) ?? 1;
+    const freeHitEnabled = document.getElementById("freeHitEnabled").checked;
+    const nbCountsAsLegal = document.getElementById("nbCountsAsLegal").checked;
     
     // Determine batting & bowling teams
     let battingTeam = 1;
     let bowlingTeam = 2;
+    let finalTossWinner = null;
+    let finalTossDecision = null;
     
-    if (tossWinner === "1") {
-        if (tossDecision === "bowl") {
-            battingTeam = 2;
-            bowlingTeam = 1;
+    if (tossMethod === "manual") {
+        const tossWinner = document.getElementById("tossWinner").value;
+        const tossDecision = document.getElementById("tossDecision").value;
+        
+        finalTossWinner = tossWinner === "1" ? t1Name : t2Name;
+        finalTossDecision = tossDecision;
+        
+        if (tossWinner === "1") {
+            if (tossDecision === "bowl") {
+                battingTeam = 2;
+                bowlingTeam = 1;
+            }
+        } else {
+            if (tossDecision === "bat") {
+                battingTeam = 2;
+                bowlingTeam = 1;
+            }
         }
-    } else {
-        if (tossDecision === "bat") {
-            battingTeam = 2;
-            bowlingTeam = 1;
+    } else if (tossMethod === "interactive") {
+        if (!interactiveTossWinner || !interactiveTossDecision) {
+            alert("Please launch and complete the Interactive Coin Toss first!");
+            return;
         }
+        finalTossWinner = interactiveTossWinner === "1" ? t1Name : t2Name;
+        finalTossDecision = interactiveTossDecision;
+        
+        if (interactiveTossWinner === "1") {
+            if (interactiveTossDecision === "bowl") {
+                battingTeam = 2;
+                bowlingTeam = 1;
+            }
+        } else {
+            if (interactiveTossDecision === "bat") {
+                battingTeam = 2;
+                bowlingTeam = 1;
+            }
+        }
+    } else if (tossMethod === "skip") {
+        const directBat = document.getElementById("directBattingTeam").value;
+        battingTeam = parseInt(directBat);
+        bowlingTeam = battingTeam === 1 ? 2 : 1;
+        
+        finalTossWinner = null;
+        finalTossDecision = null;
     }
     
     const battingSquad = battingTeam === 1 ? squad1 : squad2;
@@ -149,6 +325,16 @@ function startMatch() {
         innings: 1,
         battingTeam: battingTeam,
         bowlingTeam: bowlingTeam,
+        
+        tossMethod: tossMethod,
+        tossWinnerName: finalTossWinner,
+        tossDecision: finalTossDecision,
+        
+        widePenalty: widePenalty,
+        nbPenalty: nbPenalty,
+        freeHitEnabled: freeHitEnabled,
+        nbCountsAsLegal: nbCountsAsLegal,
+        freeHitActive: false,
         
         score: 0,
         wickets: 0,
@@ -253,6 +439,13 @@ function addRun(run) {
     
     pushHistory();
     
+    // Clear Free Hit status after a legal delivery is played
+    let freeHitWasActive = false;
+    if (matchState.freeHitActive) {
+        freeHitWasActive = true;
+        matchState.freeHitActive = false;
+    }
+    
     // Update Score
     matchState.score += run;
     matchState.balls++;
@@ -261,8 +454,14 @@ function addRun(run) {
     let bat = matchState.stats[matchState.strikerName].batting;
     bat.runs += run;
     bat.balls++;
-    if (run === 4) bat.fours++;
-    if (run === 6) bat.sixes++;
+    if (run === 4) {
+        bat.fours++;
+        triggerCelebration(4);
+    }
+    if (run === 6) {
+        bat.sixes++;
+        triggerCelebration(6);
+    }
     
     // Update Bowler Stats
     let bowl = matchState.stats[matchState.currentBowlerName].bowling;
@@ -277,9 +476,10 @@ function addRun(run) {
     
     // Timeline entry
     const overNum = formatOvers(matchState.balls - 1);
+    const freeHitSuffix = freeHitWasActive ? " (Free Hit)" : "";
     addTimelineItem(
         run.toString(), 
-        `${matchState.currentBowlerName} to ${strikerBefore}`, 
+        `${matchState.currentBowlerName} to ${strikerBefore}${freeHitSuffix}`, 
         `${run === 4 ? "FOUR! " : run === 6 ? "SIX! " : ""}${run} run(s) scored.`
     );
     
@@ -300,7 +500,8 @@ function addExtra(type) {
         const extra = parseInt(extraStr) || 0;
         
         pushHistory();
-        const totalWideRuns = 1 + extra;
+        const penalty = (matchState.widePenalty !== undefined) ? matchState.widePenalty : 1;
+        const totalWideRuns = penalty + extra;
         
         matchState.score += totalWideRuns;
         matchState.extras.wd += totalWideRuns;
@@ -311,9 +512,10 @@ function addExtra(type) {
         const ballLabel = totalWideRuns > 1 ? `${totalWideRuns}Wd` : "Wd";
         matchState.currentOver.push(ballLabel);
         
+        const freeHitSuffix = matchState.freeHitActive ? " (Free Hit)" : "";
         addTimelineItem(
             "Wd", 
-            `${matchState.currentBowlerName} to ${matchState.strikerName}`,
+            `${matchState.currentBowlerName} to ${matchState.strikerName}${freeHitSuffix}`,
             `Wide ball. Conceded ${totalWideRuns} runs.`
         );
         
@@ -323,30 +525,47 @@ function addExtra(type) {
         const batRuns = parseInt(batRunsStr) || 0;
         
         pushHistory();
-        const totalNbRuns = 1 + batRuns;
+        const penalty = (matchState.nbPenalty !== undefined) ? matchState.nbPenalty : 1;
+        const totalNbRuns = penalty + batRuns;
         
         matchState.score += totalNbRuns;
-        matchState.extras.nb += 1;
+        matchState.extras.nb += penalty;
         
         // Batsman gets runs off the bat, faces a ball (in standard records, batsman faces the NB)
         let bat = matchState.stats[matchState.strikerName].batting;
         bat.runs += batRuns;
         bat.balls++;
-        if (batRuns === 4) bat.fours++;
-        if (batRuns === 6) bat.sixes++;
+        if (batRuns === 4) {
+            bat.fours++;
+            triggerCelebration(4);
+        }
+        if (batRuns === 6) {
+            bat.sixes++;
+            triggerCelebration(6);
+        }
         
-        // Bowler charged with all runs on a no-ball, no legal ball
+        // Bowler charged with all runs on a no-ball, no legal ball unless toggle is enabled
         matchState.stats[matchState.currentBowlerName].bowling.runs += totalNbRuns;
+        if (matchState.nbCountsAsLegal) {
+            matchState.stats[matchState.currentBowlerName].bowling.balls++;
+            matchState.balls++;
+        }
         
         const ballLabel = batRuns > 0 ? `${batRuns}Nb` : "Nb";
         matchState.currentOver.push(ballLabel);
         
         let strikerBefore = matchState.strikerName;
+        const freeHitSuffix = matchState.freeHitActive ? " (Free Hit)" : "";
         addTimelineItem(
             "Nb", 
-            `${matchState.currentBowlerName} to ${strikerBefore}`,
+            `${matchState.currentBowlerName} to ${strikerBefore}${freeHitSuffix}`,
             `No Ball. ${batRuns} runs off the bat. Total ${totalNbRuns} runs.`
         );
+        
+        // Set Free Hit active on No Ball if enabled
+        if (matchState.freeHitEnabled) {
+            matchState.freeHitActive = true;
+        }
         
         // Swap strike on odd runs scored off the bat
         if (batRuns % 2 !== 0) {
@@ -359,6 +578,13 @@ function addExtra(type) {
         const byeRuns = parseInt(byeRunsStr) || 1;
         
         pushHistory();
+        
+        // Clear Free Hit status after a legal delivery is played
+        let freeHitWasActive = false;
+        if (matchState.freeHitActive) {
+            freeHitWasActive = true;
+            matchState.freeHitActive = false;
+        }
         
         matchState.score += byeRuns;
         if (type === "b") {
@@ -378,9 +604,10 @@ function addExtra(type) {
         matchState.currentOver.push(ballLabel);
         
         let strikerBefore = matchState.strikerName;
+        const freeHitSuffix = freeHitWasActive ? " (Free Hit)" : "";
         addTimelineItem(
             type.toUpperCase(), 
-            `${matchState.currentBowlerName} to ${strikerBefore}`,
+            `${matchState.currentBowlerName} to ${strikerBefore}${freeHitSuffix}`,
             `${byeRuns} ${type === "b" ? "Bye" : "Leg Bye"} runs. (Counts as legal ball)`
         );
         
@@ -411,6 +638,33 @@ function swapStrikerEnd() {
 
 function openWicketModal() {
     if (matchState.status !== "live") return;
+    
+    // Show/hide Free Hit warning and customize dismissal options
+    const isFreeHit = matchState.freeHitActive === true;
+    const fhWarning = document.getElementById("wicketFreeHitWarning");
+    if (fhWarning) {
+        fhWarning.style.display = isFreeHit ? "flex" : "none";
+    }
+    
+    const selectDismissal = document.getElementById("dismissalType");
+    if (selectDismissal) {
+        if (isFreeHit) {
+            selectDismissal.innerHTML = `
+                <option value="Run Out">Run Out</option>
+                <option value="Retired Hurt">Retired Hurt</option>
+            `;
+        } else {
+            selectDismissal.innerHTML = `
+                <option value="Bowled">Bowled</option>
+                <option value="Caught">Caught</option>
+                <option value="LBW">LBW</option>
+                <option value="Run Out">Run Out</option>
+                <option value="Stumped">Stumped</option>
+                <option value="Hit Wicket">Hit Wicket</option>
+                <option value="Retired Hurt">Retired Hurt</option>
+            `;
+        }
+    }
     
     // Populate batsmen drop-down
     const selectDismissed = document.getElementById("dismissedBatsman");
@@ -449,7 +703,9 @@ function openWicketModal() {
     }
     
     document.getElementById("fielderName").value = "";
-    document.getElementById("dismissalType").value = "Bowled";
+    if (selectDismissal) {
+        selectDismissal.value = isFreeHit ? "Run Out" : "Bowled";
+    }
     toggleFielderInput();
     
     document.getElementById("wicketModal").classList.add("active");
@@ -476,6 +732,11 @@ function confirmWicket() {
     const nextName = document.getElementById("nextBatsman").value;
     
     pushHistory();
+    
+    // Clear Free Hit status after a legal delivery is played
+    if (matchState.freeHitActive) {
+        matchState.freeHitActive = false;
+    }
     
     // Update score counts
     matchState.wickets++;
@@ -635,7 +896,11 @@ function checkInningsOrOverEnd() {
     
     // 4. Check if over completed (6 legal balls)
     let legalBallsInOver = matchState.currentOver.filter(ball => {
-        return !ball.includes("Wd") && !ball.includes("Nb");
+        if (matchState.nbCountsAsLegal) {
+            return !ball.includes("Wd"); // Nb is counted as a legal ball
+        } else {
+            return !ball.includes("Wd") && !ball.includes("Nb"); // Nb is not legal (rebowl)
+        }
     }).length;
     
     if (legalBallsInOver === 6) {
@@ -816,6 +1081,25 @@ function updateUI() {
     // Match titles
     document.getElementById("matchTitle").innerText = `${matchState.team1Name} vs ${matchState.team2Name}`;
     
+    // Set Toss Details sub-header
+    const tossDetailEl = document.getElementById("matchTossDetail");
+    if (tossDetailEl) {
+        if (matchState.tossMethod === "skip") {
+            tossDetailEl.innerText = "Toss: Skipped (Direct Setup)";
+        } else if (matchState.tossWinnerName && matchState.tossDecision) {
+            const decisionStr = matchState.tossDecision === "bat" ? "elected to bat" : "elected to bowl";
+            tossDetailEl.innerText = `Toss: ${matchState.tossWinnerName} won and ${decisionStr} first`;
+        } else {
+            tossDetailEl.innerText = "";
+        }
+    }
+    
+    // Render Free Hit badge
+    const fhBadge = document.getElementById("freeHitBadge");
+    if (fhBadge) {
+        fhBadge.style.display = matchState.freeHitActive ? "inline-flex" : "none";
+    }
+    
     // Status Badge
     let statusText = `Innings ${matchState.innings} - ${battingTeamName} batting`;
     if (matchState.status === "ended") {
@@ -872,6 +1156,44 @@ function updateUI() {
     renderLiveStats();
     renderScorecardTab();
     renderTimelineTab();
+    updateTwoSiderNotice();
+}
+
+function updateTwoSiderNotice() {
+    let hasTwoSider = false;
+    if (matchState.stats) {
+        hasTwoSider = Object.values(matchState.stats).some(p => p && p.isTwoSider === true);
+    }
+    
+    const liveNotice = document.getElementById("liveTwoSiderNotice");
+    const scorecardNotice = document.getElementById("scorecardTwoSiderNotice");
+    
+    let twoSiders = new Set();
+    if (hasTwoSider && matchState.stats) {
+        Object.keys(matchState.stats).forEach(name => {
+            if (matchState.stats[name].isTwoSider) {
+                let baseName = name.replace(" (T1)", "").replace(" (T2)", "");
+                twoSiders.add(baseName);
+            }
+        });
+    }
+    
+    if (hasTwoSider && twoSiders.size > 0) {
+        const namesList = Array.from(twoSiders).join(", ");
+        if (liveNotice) {
+            liveNotice.style.display = "flex";
+            const nameSpan = liveNotice.querySelector(".two-sider-names");
+            if (nameSpan) nameSpan.innerText = namesList;
+        }
+        if (scorecardNotice) {
+            scorecardNotice.style.display = "flex";
+            const nameSpan = scorecardNotice.querySelector(".two-sider-names");
+            if (nameSpan) nameSpan.innerText = namesList;
+        }
+    } else {
+        if (liveNotice) liveNotice.style.display = "none";
+        if (scorecardNotice) scorecardNotice.style.display = "none";
+    }
 }
 
 function renderCurrentOverBalls() {
@@ -915,11 +1237,16 @@ function renderLiveStats() {
     const sr1 = strikerStats.balls ? ((strikerStats.runs / strikerStats.balls) * 100).toFixed(2) : "0.00";
     const sr2 = nonStrikerStats.balls ? ((nonStrikerStats.runs / nonStrikerStats.balls) * 100).toFixed(2) : "0.00";
     
+    // Two-Sider Indicators
+    let strikerDisp = matchState.strikerName + (matchState.stats[matchState.strikerName].isTwoSider ? " ↔️" : "");
+    let nonStrikerDisp = matchState.nonStrikerName + (matchState.stats[matchState.nonStrikerName].isTwoSider ? " ↔️" : "");
+    let bowlerDisp = matchState.currentBowlerName + (matchState.stats[matchState.currentBowlerName].isTwoSider ? " ↔️" : "");
+    
     // Striker Row
     let row1 = `
         <tr class="on-strike">
             <td>
-                <span class="strike-dot"></span> ${matchState.strikerName} *
+                <span class="strike-dot"></span> ${strikerDisp} *
                 <button onclick="openEditPlayerModal('striker')" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 4px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer; margin-left: 8px;">Edit ✏️</button>
             </td>
             <td>${strikerStats.runs}</td>
@@ -933,7 +1260,7 @@ function renderLiveStats() {
     let row2 = `
         <tr>
             <td>
-                ${matchState.nonStrikerName}
+                ${nonStrikerDisp}
                 <button onclick="openEditPlayerModal('nonStriker')" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 4px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer; margin-left: 8px;">Edit ✏️</button>
             </td>
             <td>${nonStrikerStats.runs}</td>
@@ -961,7 +1288,7 @@ function renderLiveStats() {
     let bowlRow = `
         <tr>
             <td>
-                ${matchState.currentBowlerName}
+                ${bowlerDisp}
                 <button onclick="openEditPlayerModal('bowler')" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 4px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer; margin-left: 8px;">Edit ✏️</button>
             </td>
             <td>${formatOvers(bowlerStats.balls)}</td>
@@ -1045,11 +1372,12 @@ function renderInningsScorecard(innNum, batSquad, bowlSquad, batTbodyId, bowlTbo
         
         // Determine strike indicator
         let dispName = name;
+        if (matchState.stats[name] && matchState.stats[name].isTwoSider) {
+            dispName += " ↔️";
+        }
         if (matchState.status === "live" && matchState.innings === innNum) {
             if (name === matchState.strikerName) {
-                dispName = `⚡ ${name} *`;
-            } else if (name === matchState.nonStrikerName) {
-                dispName = `${name}`;
+                dispName = `⚡ ${dispName} *`;
             }
         }
         
@@ -1097,7 +1425,11 @@ function renderInningsScorecard(innNum, batSquad, bowlSquad, batTbodyId, bowlTbo
         fowData.forEach(item => {
             const badge = document.createElement("span");
             badge.className = "fow-badge";
-            badge.innerText = `${item.wicketNumber}-${item.score} (${item.batsmanOut}, ${item.over} ov)`;
+            let nameDisp = item.batsmanOut;
+            if (matchState.stats[nameDisp] && matchState.stats[nameDisp].isTwoSider) {
+                nameDisp += " ↔️";
+            }
+            badge.innerText = `${item.wicketNumber}-${item.score} (${nameDisp}, ${item.over} ov)`;
             fowDiv.appendChild(badge);
         });
     }
@@ -1117,9 +1449,14 @@ function renderInningsScorecard(innNum, batSquad, bowlSquad, batTbodyId, bowlTbo
             const stats = matchState.stats[name].bowling;
             const econ = stats.balls ? (stats.runs / (stats.balls / 6)).toFixed(2) : "0.00";
             
+            let dispName = name;
+            if (matchState.stats[name] && matchState.stats[name].isTwoSider) {
+                dispName += " ↔️";
+            }
+            
             const row = `
                 <tr>
-                    <td>${name}${name === activeBowlerInInn ? " 🔴 (Current)" : ""}</td>
+                    <td>${dispName}${name === activeBowlerInInn ? " 🔴 (Current)" : ""}</td>
                     <td>${formatOvers(stats.balls)}</td>
                     <td>${stats.maidens}</td>
                     <td>${stats.runs}</td>
@@ -1212,6 +1549,10 @@ function openEditPlayerModal(role) {
     document.getElementById("editPlayerCurrentName").innerText = currentName;
     document.getElementById("editPlayerRenameInput").value = currentName;
     
+    // Set two-sider checkbox status
+    const isTwoSider = matchState.stats[currentName] && matchState.stats[currentName].isTwoSider || false;
+    document.getElementById("editPlayerTwoSiderCheckbox").checked = isTwoSider;
+    
     const select = document.getElementById("editPlayerReassignSelect");
     select.innerHTML = '<option value="">-- Keep current player --</option>';
     
@@ -1253,7 +1594,8 @@ function closeEditPlayerModal() {
 
 function confirmEditPlayer() {
     const reassignName = document.getElementById("editPlayerReassignSelect").value;
-    const renameName = document.getElementById("editPlayerRenameInput").value.trim();
+    let renameName = document.getElementById("editPlayerRenameInput").value.trim();
+    const isTwoSiderChecked = document.getElementById("editPlayerTwoSiderCheckbox").checked;
     
     if (!renameName) {
         alert("Player name cannot be empty.");
@@ -1272,6 +1614,62 @@ function confirmEditPlayer() {
     if (renameName !== currentName) {
         renamePlayer(currentName, renameName);
         currentName = renameName; // Update local tracker
+        changed = true;
+    }
+    
+    // Handle Two-Sider checkbox logic
+    const wasTwoSider = matchState.stats[currentName] && matchState.stats[currentName].isTwoSider || false;
+    if (isTwoSiderChecked !== wasTwoSider) {
+        if (isTwoSiderChecked) {
+            // Find which team the player belongs to
+            const inT1 = matchState.team1Squad.includes(currentName);
+            const inT2 = matchState.team2Squad.includes(currentName);
+            
+            let baseName = currentName.replace(" (T1)", "").replace(" (T2)", "");
+            let t1Name = baseName + " (T1)";
+            let t2Name = baseName + " (T2)";
+            
+            if (inT1 && !currentName.includes("(T1)")) {
+                renamePlayer(currentName, t1Name);
+                currentName = t1Name;
+            } else if (inT2 && !currentName.includes("(T2)")) {
+                renamePlayer(currentName, t2Name);
+                currentName = t2Name;
+            }
+            
+            // Mark as two-sider
+            matchState.stats[currentName].isTwoSider = true;
+            
+            // Add to the other team's squad list as well!
+            if (inT1) {
+                if (!matchState.team2Squad.includes(t2Name)) {
+                    matchState.team2Squad.push(t2Name);
+                    // Initialize stats for the other team's version
+                    matchState.stats[t2Name] = {
+                        batting: { runs: 0, balls: 0, fours: 0, sixes: 0, dismissal: "yet to bat" },
+                        bowling: { balls: 0, maidens: 0, runs: 0, wickets: 0 },
+                        isTwoSider: true
+                    };
+                }
+            } else if (inT2) {
+                if (!matchState.team1Squad.includes(t1Name)) {
+                    matchState.team1Squad.push(t1Name);
+                    // Initialize stats
+                    matchState.stats[t1Name] = {
+                        batting: { runs: 0, balls: 0, fours: 0, sixes: 0, dismissal: "yet to bat" },
+                        bowling: { balls: 0, maidens: 0, runs: 0, wickets: 0 },
+                        isTwoSider: true
+                    };
+                }
+            }
+            
+            alert(`Player "${baseName}" is now a Two-Sider!\nWe added "${t1Name}" to ${matchState.team1Name} and "${t2Name}" to ${matchState.team2Name} to track their stats separately in each innings.`);
+        } else {
+            // Uncheck: just set the flag to false
+            if (matchState.stats[currentName]) {
+                matchState.stats[currentName].isTwoSider = false;
+            }
+        }
         changed = true;
     }
     
@@ -1433,7 +1831,7 @@ function renderPastMatches() {
         
         item.innerHTML = `
             <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
-                <span style="font-weight: 700; color: var(--color-warning); font-size: 0.95rem;">🌙 ${match.team1Name} vs ${match.team2Name}</span>
+                <span style="font-weight: 700; color: var(--color-warning); font-size: 0.95rem;">🏏 ${match.team1Name} vs ${match.team2Name}</span>
                 <span style="font-size: 0.8rem; color: var(--text-muted);">${match.date}</span>
             </div>
             <div style="font-size: 0.9rem; margin-top: 4px; display: flex; flex-direction: column; gap: 4px; width: 100%;">
@@ -1487,11 +1885,20 @@ function viewPastMatchScorecard(id) {
         inn2Html = generatePastInningsHtml(state, 2);
     }
     
+    let tossText = "";
+    if (state.tossMethod === "skip") {
+        tossText = `<div style="font-size: 0.85rem; color: var(--color-warning); margin-top: 6px;">Toss: Skipped (Direct Setup)</div>`;
+    } else if (state.tossWinnerName && state.tossDecision) {
+        const decisionStr = state.tossDecision === "bat" ? "elected to bat" : "elected to bowl";
+        tossText = `<div style="font-size: 0.85rem; color: var(--color-warning); margin-top: 6px;">Toss: ${state.tossWinnerName} won and ${decisionStr} first</div>`;
+    }
+    
     content.innerHTML = `
         <div style="text-align: center; margin-bottom: 20px;">
             <h2 style="font-size: 1.5rem; margin-bottom: 4px;">${state.team1Name} vs ${state.team2Name}</h2>
             <div class="match-status-badge">${match.winner}</div>
             <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Played on: ${match.date}</div>
+            ${tossText}
         </div>
         ${inn1Html}
         ${inn2Html ? `<div style="margin-top: 30px;">${inn2Html}</div>` : ""}
@@ -1672,4 +2079,125 @@ function generatePastInningsHtml(state, innNum) {
             </div>
         </div>
     `;
+}
+
+// --- CELEBRATION EFFECTS ---
+
+function triggerCelebration(run) {
+    const container = document.createElement("div");
+    container.className = "celebration-container";
+    document.body.appendChild(container);
+
+    const card = document.createElement("div");
+    card.className = `celebration-card ${run === 4 ? 'four-card' : 'six-card'}`;
+    
+    const titleText = run === 4 ? "🏏 FOUR! 🏏" : "🚀 SIX! 🚀";
+    const descText = run === 4 ? "Beautiful Boundary! 🌟" : "Out of the Stadium! 🌌";
+    
+    card.innerHTML = `
+        <div class="celebration-title">${titleText}</div>
+        <div class="celebration-subtitle">${descText}</div>
+    `;
+    container.appendChild(card);
+
+    const colors = ["#fbbf24", "#34d399", "#f87171", "#60a5fa", "#a78bfa", "#f472b6"];
+    
+    // Top raining confetti
+    const topConfettiCount = 50;
+    for (let i = 0; i < topConfettiCount; i++) {
+        const particle = document.createElement("div");
+        particle.className = "confetti-particle";
+        
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const left = Math.random() * 100;
+        const delay = Math.random() * 0.4;
+        const duration = 1.5 + Math.random() * 1.5;
+        const size = 6 + Math.random() * 8;
+        const isCircle = Math.random() > 0.5;
+
+        particle.style.backgroundColor = color;
+        particle.style.left = `${left}%`;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        particle.style.animationDelay = `${delay}s`;
+        particle.style.animationDuration = `${duration}s`;
+        if (isCircle) {
+            particle.style.borderRadius = "50%";
+        }
+        
+        particle.style.setProperty("--x-end", `${-150 + Math.random() * 300}px`);
+        particle.style.setProperty("--rotation", `${360 + Math.random() * 720}deg`);
+
+        container.appendChild(particle);
+    }
+
+    // Bottom-left corner burst
+    const leftBurstCount = 30;
+    for (let i = 0; i < leftBurstCount; i++) {
+        const particle = document.createElement("div");
+        particle.className = "confetti-particle burst";
+        particle.style.left = "0px";
+        
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const delay = Math.random() * 0.2;
+        const duration = 1.2 + Math.random() * 0.8;
+        const size = 8 + Math.random() * 10;
+        const isCircle = Math.random() > 0.5;
+
+        particle.style.backgroundColor = color;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        particle.style.animationDelay = `${delay}s`;
+        particle.style.animationDuration = `${duration}s`;
+        if (isCircle) {
+            particle.style.borderRadius = "50%";
+        }
+        
+        const xEnd = 150 + Math.random() * 350;
+        const yEnd = -(300 + Math.random() * 450);
+        particle.style.setProperty("--x-end", `${xEnd}px`);
+        particle.style.setProperty("--y-end", `${yEnd}px`);
+        particle.style.setProperty("--rotation", `${360 + Math.random() * 720}deg`);
+
+        container.appendChild(particle);
+    }
+
+    // Bottom-right corner burst
+    const rightBurstCount = 30;
+    for (let i = 0; i < rightBurstCount; i++) {
+        const particle = document.createElement("div");
+        particle.className = "confetti-particle burst";
+        particle.style.right = "0px";
+        
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const delay = Math.random() * 0.2;
+        const duration = 1.2 + Math.random() * 0.8;
+        const size = 8 + Math.random() * 10;
+        const isCircle = Math.random() > 0.5;
+
+        particle.style.backgroundColor = color;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        particle.style.animationDelay = `${delay}s`;
+        particle.style.animationDuration = `${duration}s`;
+        if (isCircle) {
+            particle.style.borderRadius = "50%";
+        }
+        
+        const xEnd = -(150 + Math.random() * 350);
+        const yEnd = -(300 + Math.random() * 450);
+        particle.style.setProperty("--x-end", `${xEnd}px`);
+        particle.style.setProperty("--y-end", `${yEnd}px`);
+        particle.style.setProperty("--rotation", `${360 + Math.random() * 720}deg`);
+
+        container.appendChild(particle);
+    }
+
+    // Fade and clean up
+    setTimeout(() => {
+        container.classList.add("fade-out");
+        setTimeout(() => {
+            container.remove();
+        }, 500);
+    }, 2200);
 }
