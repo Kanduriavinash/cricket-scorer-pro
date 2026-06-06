@@ -4,7 +4,7 @@ let matchState = {
     team2Name: "Team 2",
     team1Squad: [],
     team2Squad: [],
-    oversLimit: 20,
+    oversLimit: 10,
     innings: 1, // 1 or 2
     battingTeam: 1, // 1 or 2
     bowlingTeam: 2, // 2 or 1
@@ -253,7 +253,7 @@ function startMatch() {
     const squad1 = parseSquad("team1Squad", `${t1Name} Player`);
     const squad2 = parseSquad("team2Squad", `${t2Name} Player`);
     
-    const oversLimit = parseInt(document.getElementById("totalOvers").value) || 20;
+    const oversLimit = parseInt(document.getElementById("totalOvers").value) || 10;
     const tossMethod = document.getElementById("tossMethod").value;
     const widePenalty = parseInt(document.getElementById("widePenalty").value) ?? 1;
     const nbPenalty = parseInt(document.getElementById("nbPenalty").value) ?? 1;
@@ -1067,7 +1067,7 @@ function restartMatchSetup() {
     // Reset inputs
     document.getElementById("team1").value = "Team 1";
     document.getElementById("team2").value = "Team 2";
-    document.getElementById("totalOvers").value = 20;
+    document.getElementById("totalOvers").value = 10;
     
     location.reload();
 }
